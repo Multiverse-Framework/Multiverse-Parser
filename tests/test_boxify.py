@@ -1,7 +1,7 @@
 import unittest
 import mujoco
 import os
-from multiverse_parser import boxify, MjcfBoxify, UrdfBoxify
+from multiverse_parser import boxify, voxelize, MjcfBoxify, UrdfBoxify
 
 RESOURCES_PATH = "../resources/input"
 OUTPUT_PATH = "../resources/output/"
@@ -67,3 +67,16 @@ class TestBoxify(unittest.TestCase):
         file_name = os.path.basename(file_path)
         file_name = file_name.split(".")[0]
         urdf_boxify.save_as(os.path.join(OUTPUT_PATH, f"{file_name}_boxified.urdf"))
+
+class TestVoxelize(unittest.TestCase):
+    def test_mesh_voxelize_stl(self):
+        input_file_path = f"{RESOURCES_PATH}/meshes/IAIDrawerW60H53.stl"
+        output_file_path = f"{OUTPUT_PATH}/IAIDrawerW60H53_voxelized.stl"
+        voxelize(input_file_path, output_file_path, 5)
+        self.assertTrue(os.path.exists(output_file_path))
+
+    def test_mesh_voxelize_obj(self):
+        input_file_path = f"{RESOURCES_PATH}/furniture/obj/IAICabinet1W60.obj"
+        output_file_path = f"{OUTPUT_PATH}/IAICabinet1W60_voxelized.stl"
+        voxelize(input_file_path, output_file_path,7)
+        self.assertTrue(os.path.exists(output_file_path))

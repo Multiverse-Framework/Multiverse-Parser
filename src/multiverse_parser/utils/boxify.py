@@ -2,6 +2,8 @@
 
 from typing import List, Tuple
 
+from pxr.Tf import RaiseCodingError
+
 try:
     import trimesh
 except ModuleNotFoundError:
@@ -16,6 +18,7 @@ from urdf_parser_py import urdf
 import xml.etree.ElementTree as ET
 import bpy
 from scipy.spatial.transform import Rotation
+import numpy as np
 
 
 def boxify(input_file: str,
@@ -99,6 +102,48 @@ def boxify(input_file: str,
     scene.export(output_file)
 
 
+def voxelize(input_file: str,
+             output_file: str,
+             octree_depth: int) -> None:
+    for armature in bpy.data.armatures:
+        bpy.data.armatures.remove(armature)
+    for mesh in bpy.data.meshes:
+        bpy.data.meshes.remove(mesh)
+    for from_obj in bpy.data.objects:
+        bpy.data.objects.remove(from_obj)
+    for material in bpy.data.materials:
+        bpy.data.materials.remove(material)
+    for camera in bpy.data.cameras:
+        bpy.data.cameras.remove(camera)
+    for light in bpy.data.lights:
+        bpy.data.lights.remove(light)
+    for image in bpy.data.images:
+        bpy.data.images.remove(image)
+
+    if input_file.endswith(".stl"):
+        bpy.ops.wm.stl_import(filepath=input_file, up_axis='Z', forward_axis='Y')
+        obj = bpy.context.object
+        if obj and obj.type == 'MESH':
+            apply_remesh = obj.modifiers.new(name="Remesh", type="REMESH")
+            apply_remesh.mode = "BLOCKS"
+            apply_remesh.octree_depth = octree_depth
+            apply_remesh.scale = 1.0
+            bpy.ops.object.modifier_apply(modifier=apply_remesh.name)
+            bpy.ops.wm.stl_export(filepath=output_file)
+    elif input_file.endswith(".obj"):
+        bpy.ops.wm.obj_import(filepath=input_file, up_axis='Z', forward_axis='Y')
+        bpy.ops.object.select_all(action='SELECT')
+        bpy.ops.object.join()
+        obj = bpy.context.object
+        if obj and obj.type == 'MESH':
+            apply_remesh = obj.modifiers.new(name="Remesh", type="REMESH")
+            apply_remesh.mode = "BLOCKS"
+            apply_remesh.octree_depth = octree_depth
+            apply_remesh.scale = 1.0
+            bpy.ops.object.modifier_apply(modifier=apply_remesh.name)
+            bpy.ops.wm.stl_export(filepath=output_file)
+
+
 class Boxify:
     def __init__(self, file_path: str):
         """
@@ -148,6 +193,59 @@ class Boxify:
                 size = [max_corner[i] - min_corner[i] for i in range(3)]
                 cubes.append((origin, size))
 
+        return cubes
+
+    @staticmethod
+    def get_cubes_from_voxelized(file_path: str) -> List[Tuple[List[float], List[float]]]:
+        """
+        Generate cubes from voxelized mesh
+
+        :param file_path: File path to the voxelized mesh
+        :return: List of cubes (origin, size)
+        """
+        for armature in bpy.data.armatures:
+            bpy.data.armatures.remove(armature)
+        for mesh in bpy.data.meshes:
+            bpy.data.meshes.remove(mesh)
+        for from_obj in bpy.data.objects:
+            bpy.data.objects.remove(from_obj)
+        for material in bpy.data.materials:
+            bpy.data.materials.remove(material)
+        for camera in bpy.data.cameras:
+            bpy.data.cameras.remove(camera)
+        for light in bpy.data.lights:
+            bpy.data.lights.remove(light)
+        for image in bpy.data.images:
+            bpy.data.images.remove(image)
+        bpy.ops.wm.stl_import(filepath=file_path, up_axis='Z', forward_axis='Y')
+        obj = bpy.context.object
+        bpy.ops.object.mode_set(mode='OBJECT')
+        voxel_keys = []
+        voxel_dict = {}
+        for i, vert in enumerate(obj.data.vertices):
+            voxel_key = [float(vert.co.x), float(vert.co.y), float(vert.co.z)]
+            voxel_keys.append(voxel_key)
+        size_list = len(voxel_keys)
+        if size_list % 2 == 0:
+            v1 = voxel_keys[size_list // 2]
+            v2 = voxel_keys[(size_list // 2) - 1]
+        else:
+            size_list = size_list - 1
+            v1 = voxel_keys[size_list // 2]
+            v2 = voxel_keys[(size_list // 2) - 1]
+        x = v1[0] - v2[0]
+        y = v1[1] - v2[1]
+        z = v1[2] - v2[2]
+        longitude = None
+        for value in [x, y, z]:
+            if value != 0:
+                longitude = value
+                break
+        cubes = []
+        size = [longitude, longitude, longitude]
+        for i in voxel_keys:
+            location = i
+            cubes.append((location, size))
         return cubes
 
     def remove_all_meshes(self):

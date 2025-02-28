@@ -12,4 +12,4 @@ try:
                                            MaterialBuilder, MaterialProperty)
 except ImportError:
     print("Ignoring import error in multiverse_parser")
-from multiverse_parser.utils import modify_name, boxify, MjcfBoxify, UrdfBoxify
+from multiverse_parser.utils import modify_name, boxify, voxelize, MjcfBoxify, UrdfBoxify
