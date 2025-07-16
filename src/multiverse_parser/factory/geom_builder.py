@@ -7,6 +7,7 @@ from enum import Enum
 
 import numpy
 
+from multiverse_parser import logging
 from .mesh_builder import MeshBuilder, MeshProperty
 from .material_builder import MaterialBuilder, MaterialProperty
 from ..utils import modify_name, calculate_mesh_inertial, shift_inertia_tensor, shift_center_of_mass, get_transform
@@ -133,7 +134,7 @@ class GeomBuilder:
             new_mesh_stage = Usd.Stage.Open(new_usd_mesh_file_path)
             new_default_prim = new_mesh_stage.GetDefaultPrim()
             if mesh_name != new_default_prim.GetName():
-                print(f"Mesh name {mesh_name} does not match default prim name in {new_usd_mesh_file_path}.")
+                logging.error(f"Mesh name {mesh_name} does not match default prim name in {new_usd_mesh_file_path}.")
             if not new_default_prim.IsA(UsdGeom.Mesh):
                 raise ValueError(f"Default prim of {new_usd_mesh_file_path} is not a mesh.")
 

@@ -8,6 +8,8 @@ import os
 
 from pxr import Usd, UsdGeom, Sdf, UsdShade
 
+from multiverse_parser import logging
+
 cache_mesh_stages = {}
 
 
@@ -44,8 +46,8 @@ class MeshProperty:
         assert self.face_vertex_counts.size * 3 == self.face_vertex_indices.size
         if self.texture_coordinates is not None:
             if self.texture_coordinates.size != self.face_vertex_indices.size * 2:
-                print(f"Texture coordinates size {self.texture_coordinates.size} "
-                      f"is not equal to {self.face_vertex_indices.size * 2}.")
+                logging.error(f"Texture coordinates size {self.texture_coordinates.size} "
+                              f"is not equal to {self.face_vertex_indices.size * 2}.")
 
     @classmethod
     def from_mesh_file_path(cls,
@@ -72,7 +74,7 @@ class MeshProperty:
             if mesh_stage.GetPrimAtPath(mesh_path).IsValid() and mesh_stage.GetPrimAtPath(mesh_path).IsA(UsdGeom.Mesh):
                 mesh_prim = mesh_stage.GetPrimAtPath(mesh_path)
             else:
-                print(f"Prim {mesh_prim} from {mesh_file_path} is not a mesh, try to get its child.")
+                logging.warning(f"Prim {mesh_prim} from {mesh_file_path} is not a mesh, try to get its child.")
                 mesh_prims = [prim for prim in Usd.PrimRange(mesh_stage.GetDefaultPrim()) if prim.IsA(UsdGeom.Mesh)]
                 for mesh_prim in mesh_prims:
                     if mesh_path.name in mesh_prim.GetName():

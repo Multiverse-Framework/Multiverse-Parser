@@ -6,6 +6,7 @@ from typing import Optional, Union, Any
 
 import numpy
 
+from multiverse_parser import logging
 from .texture_builder import TextureBuilder
 
 from pxr import Usd, Sdf, UsdShade, Gf
@@ -35,7 +36,7 @@ def get_input(shader: UsdShade.Shader, shader_input: str) -> Any:
             raise NotImplementedError("Only texture shader is supported.")
         file_input = output_shader.GetInput("file").Get()
         if file_input is None:
-            print("Only texture file input is supported.")
+            logging.warning("Only texture file input is supported.")
             return None
         file_path = file_input.path
         if os.path.relpath(file_path):
@@ -101,7 +102,7 @@ class MaterialProperty:
         opacity = get_input(shader=pbr_shader, shader_input="opacity")
         if opacity is not None:
             if isinstance(opacity, str):
-                print(f"Opacity {opacity} not supported yet, using 1.0 instead.")
+                logging.warning(f"Opacity {opacity} not supported yet, using 1.0 instead.")
                 opacity = 1.0
             else:
                 opacity = float(opacity)
@@ -171,7 +172,7 @@ class MaterialBuilder:
                     texture_file_path = os.path.join(os.path.dirname(self.stage.GetRootLayer().realPath),
                                                      texture_file_path)
                 if not os.path.exists(texture_file_path):
-                    print(f"Texture file {texture_file_path} does not exist, using black color instead.")
+                    logging.warning(f"Texture file {texture_file_path} does not exist, using black color instead.")
                     self._diffuse_color = numpy.array([0.0, 0.0, 0.0])
                 else:
                     texture_builder = TextureBuilder(file_path=texture_file_path)

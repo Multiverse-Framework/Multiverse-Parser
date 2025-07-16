@@ -12,6 +12,7 @@ from typing import Optional, Dict, Tuple, List
 import numpy
 from pxr import Usd, UsdShade, Sdf
 
+from multiverse_parser import logging
 from .world_builder import WorldBuilder
 from .body_builder import InertiaSource
 from ..utils import (import_obj, import_stl, import_dae, import_usd,
@@ -155,7 +156,7 @@ class Factory:
         os.makedirs(name=tmp_mesh_dir_path, exist_ok=True)
         os.makedirs(name=tmp_material_dir_path, exist_ok=True)
         os.makedirs(name=tmp_texture_dir_path, exist_ok=True)
-        print(f"Created {tmp_dir_path}, {tmp_mesh_dir_path}, {tmp_material_dir_path} and {tmp_texture_dir_path}.")
+        logging.info(f"Created {tmp_dir_path}, {tmp_mesh_dir_path}, {tmp_material_dir_path} and {tmp_texture_dir_path}.")
         return tmp_usd_file_path, tmp_mesh_dir_path, tmp_material_dir_path, tmp_texture_dir_path
 
     def import_model(self, save_file_path: Optional[str] = None) -> str:
@@ -194,7 +195,7 @@ class Factory:
 
         self.mesh_file_path_dict[mesh_file_path] = tmp_usd_mesh_file_path, tmp_mesh_file_path
 
-        print("Importing mesh from", mesh_file_path, "to", tmp_usd_mesh_file_path, "and", tmp_mesh_file_path, ".")
+        logging.info("Importing mesh from", mesh_file_path, "to", tmp_usd_mesh_file_path, "and", tmp_mesh_file_path, ".")
         mesh_file_path_clone = os.path.join(os.path.dirname(mesh_file_path),
                                             f"clone_{os.path.basename(mesh_file_path)}")
         if mesh_file_extension.lower() in [".usd", ".usda", ".usdz"]:
@@ -290,12 +291,16 @@ class Factory:
         if len(self.cmds) == 0:
             return
         # elif len(self.cmds) == 1:
-        #     print(f"Executing [blender --background --python-expr\nimport bpy{self.cmds[0]}]...")
+        #     logging.info(f"Executing [blender --background --python-expr\nimport bpy{self.cmds[0]}]...")
 
         processes = []
         for sub_cmd in self.cmds:
-            cmd = ["blender", "--background", "--python-expr", "import bpy" + sub_cmd]
-            process = subprocess.Popen(cmd)
+            cmd = ["blender", "--background", "--quiet", "--python-expr", "import bpy" + sub_cmd]
+            logger = logging.getLogger(__name__)
+            if logger.isEnabledFor(logging.DEBUG):
+                process = subprocess.Popen(cmd)
+            else:
+                process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL)
             processes.append(process)
         
         for process in processes:
@@ -348,7 +353,7 @@ class Factory:
         """
         tmp_dir_path = os.path.dirname(self.tmp_usd_file_path)
         if os.path.exists(tmp_dir_path):
-            print(f"Remove {tmp_dir_path}.")
+            logging.info(f"Remove {tmp_dir_path}.")
             shutil.rmtree(tmp_dir_path)
 
     @property

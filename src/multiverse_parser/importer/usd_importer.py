@@ -5,6 +5,7 @@ from typing import Optional, Dict
 
 import numpy
 
+from multiverse_parser import logging
 from ..factory import Factory, Configuration, InertiaSource
 from ..factory import (WorldBuilder,
                        BodyBuilder,
@@ -54,7 +55,7 @@ class UsdImporter(Factory):
         self._stage = Usd.Stage.Open(file_path)
         xform_root_prims = [prim for prim in self.stage.GetPseudoRoot().GetChildren() if prim.IsA(UsdGeom.Xform)]
         if len(xform_root_prims) > 1:
-            print("Multiple root prim found, add a default root prim")
+            logging.warning("Multiple root prim found, add a default root prim")
             world_prim = UsdGeom.Xform.Define(self.stage, "/world").GetPrim()
             self.stage.SetDefaultPrim(world_prim)
         default_prim = self.stage.GetDefaultPrim()
@@ -122,7 +123,7 @@ class UsdImporter(Factory):
         return self.tmp_usd_file_path if save_file_path is None else self.save_tmp_model(usd_file_path=save_file_path)
 
     def _import_body(self, body_prim: Usd.Prim) -> None:
-        print(f"Importing body {body_prim.GetName()}...")
+        logging.info(f"Importing body {body_prim.GetName()}...")
         if self.parent_map.get(body_prim) is not None:
             parent_xform_prim = self.parent_map[body_prim]
         else:
@@ -228,7 +229,7 @@ class UsdImporter(Factory):
                                              geom_is_visible)
 
     def _import_meshes(self) -> None:
-        print(f"Importing {len(self.mesh_dict)} meshes...")
+        logging.info(f"Importing {len(self.mesh_dict)} meshes...")
         self.execute_cmds()
         for mesh_name, (tmp_mesh_file_path,
                         mesh_path,
@@ -246,7 +247,7 @@ class UsdImporter(Factory):
             if mesh_property.points.size == 0 or mesh_property.face_vertex_counts.size == 0 or mesh_property.face_vertex_indices.size == 0:
                 # TODO: Fix empty mesh
                 continue
-            print(f"Importing mesh {mesh_path} from {tmp_mesh_file_path}...")
+            logging.info(f"Importing mesh {mesh_path} from {tmp_mesh_file_path}...")
 
             geom_builder = body_builder.add_geom(geom_name=f"{mesh_name}",
                                                  geom_property=geom_property)
@@ -256,7 +257,7 @@ class UsdImporter(Factory):
             geom_builder.set_transform(pos=geom_pos, quat=geom_quat, scale=geom_scale)
 
             if geom_is_visible:
-                print(f"Importing material for {mesh_name}...")
+                logging.info(f"Importing material for {mesh_name}...")
                 if gprim_prim.HasAPI(UsdShade.MaterialBindingAPI):
                     material_binding_api = UsdShade.MaterialBindingAPI(gprim_prim)
                     material_paths = material_binding_api.GetDirectBindingRel().GetTargets()
@@ -276,7 +277,7 @@ class UsdImporter(Factory):
                         material_file_path=material_file_path,
                         material_path=material_path)
                     if material_property.opacity == 0.0:
-                        print(f"Opacity of {material_path} is 0.0. Set to 1.0.")
+                        logging.warning(f"Opacity of {material_path} is 0.0. Set to 1.0.")
                         material_property._opacity = 1.0
                     geom_builder.add_material(material_name=material_path.name,
                                               material_property=material_property)
@@ -301,7 +302,7 @@ class UsdImporter(Factory):
                         material_file_path=material_file_path,
                         material_path=material_path)
                     if material_property.opacity == 0.0:
-                        print(f"Opacity of {material_path} is 0.0. Set to 1.0.")
+                        logging.warning(f"Opacity of {material_path} is 0.0. Set to 1.0.")
                         material_property._opacity = 1.0
                     geom_builder.add_material(material_name=material_path.name,
                                               material_property=material_property,

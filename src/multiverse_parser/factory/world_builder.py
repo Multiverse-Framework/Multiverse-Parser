@@ -2,6 +2,7 @@
 
 from typing import Optional, List
 
+from multiverse_parser import logging
 from .body_builder import BodyBuilder
 from ..utils import modify_name
 
@@ -27,7 +28,7 @@ class WorldBuilder:
         body_name = modify_name(in_name=body_name, replacement=f"Body_{body_id}" if body_id is not None else None)
 
         if body_name in self._body_builders:
-            print(f"Body {body_name} already exists.")
+            logging.warning(f"Body {body_name} already exists.")
         else:
             if parent_body_name is None:
                 body_builder = BodyBuilder(stage=self._stage, name=body_name)

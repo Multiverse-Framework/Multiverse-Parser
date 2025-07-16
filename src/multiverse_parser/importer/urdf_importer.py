@@ -9,6 +9,7 @@ import numpy
 from scipy.spatial.transform import Rotation
 from urdf_parser_py import urdf
 
+from multiverse_parser import logging
 from ..factory import Factory, Configuration, InertiaSource
 from ..factory import (WorldBuilder,
                        BodyBuilder,
@@ -39,8 +40,9 @@ def build_urdf_inertial_api(physics_mass_api: UsdPhysics.MassAPI) -> UsdUrdf.Urd
     quat = numpy.array([*quat.GetImaginary(), quat.GetReal()])
     diagonal_inertia = physics_mass_api.GetDiagonalInertiaAttr().Get()
     diagonal_inertia_matrix = numpy.diag([*diagonal_inertia])
-    rot = Rotation.from_quat(quat).as_matrix()
-    full_inertia_matrix = rot @ diagonal_inertia_matrix @ rot.T
+    full_inertia_matrix = shift_inertia_tensor(mass=mass,
+                                               inertia_tensor=diagonal_inertia_matrix,
+                                               quat=quat)
 
     prim = physics_mass_api.GetPrim()
     urdf_link_inertial_api = UsdUrdf.UrdfLinkInertialAPI.Apply(prim)
@@ -59,12 +61,12 @@ def build_urdf_inertial_api(physics_mass_api: UsdPhysics.MassAPI) -> UsdUrdf.Urd
 
 def get_joint_pos_and_quat(urdf_joint) -> (numpy.ndarray, numpy.ndarray):
     if hasattr(urdf_joint, "origin") and urdf_joint.origin is not None:
-        joint_pos = urdf_joint.origin.xyz
-        joint_rpy = urdf_joint.origin.rpy
+        joint_pos = numpy.array([*urdf_joint.origin.xyz], dtype=float)
+        joint_rpy = numpy.array([*urdf_joint.origin.rpy], dtype=float)
     else:
         joint_pos = numpy.array([0.0, 0.0, 0.0])
         joint_rpy = numpy.array([0.0, 0.0, 0.0])
-    joint_quat = Rotation.from_euler('XYZ', joint_rpy).as_quat()
+    joint_quat = Rotation.from_euler('xyz', joint_rpy).as_quat()
     return joint_pos, joint_quat
 
 
@@ -209,16 +211,15 @@ class UrdfImporter(Factory):
                     body_mass = body.inertial.mass
                     body_center_of_mass = body.inertial.origin.xyz if body.inertial.origin is not None else numpy.array(
                         [0.0, 0.0, 0.0])
+                    body_inertia_rpy = body.inertial.origin.rpy if body.inertial.origin is not None else numpy.array([0.0, 0.0, 0.0])
+                    body_inertia_quat = Rotation.from_euler('xyz', body_inertia_rpy).as_quat()
                     body_inertia = body.inertial.inertia
                     body_inertia_tensor = numpy.array([[body_inertia.ixx, body_inertia.ixy, body_inertia.ixz],
                                                        [body_inertia.ixy, body_inertia.iyy, body_inertia.iyz],
                                                        [body_inertia.ixz, body_inertia.iyz, body_inertia.izz]])
                     body_inertia_tensor = shift_inertia_tensor(mass=body_mass,
                                                                inertia_tensor=body_inertia_tensor,
-                                                               quat=Rotation.from_euler('XYZ',
-                                                                                        body.inertial.origin.rpy if body.inertial.origin is not None else numpy.array(
-                                                                                            [0.0, 0.0, 0.0])).inv()
-                                                               .as_quat())
+                                                               quat=body_inertia_quat)
 
                     body_diagonal_inertia, body_principal_axes = diagonalize_inertia(inertia_tensor=body_inertia_tensor)
                     physics_mass_api = body_builder.set_inertial(mass=body_mass,
@@ -249,8 +250,8 @@ class UrdfImporter(Factory):
                      geom: Union[urdf.Visual, urdf.Collision],
                      body_builder: BodyBuilder) -> None:
         if geom.origin is not None:
-            geom_pos = geom.origin.xyz
-            geom_rpy = geom.origin.rpy
+            geom_pos = numpy.array([*geom.origin.xyz], dtype=float)
+            geom_rpy = numpy.array([*geom.origin.rpy], dtype=float)
         else:
             geom_pos = numpy.array([0.0, 0.0, 0.0])
             geom_rpy = numpy.array([0.0, 0.0, 0.0])
@@ -409,21 +410,21 @@ class UrdfImporter(Factory):
                 package_path = os.path.dirname(rospkg.RosPack().get_path(package_name))
                 mesh_file_path = os.path.join(package_path, urdf_mesh_file_path)
             except (ImportError, rospkg.common.ResourceNotFound):
-                print(f"Package {package_name} not found or rospkg not installed, "
-                      f"searching for {urdf_mesh_file_path} in {os.getcwd()}...")
+                logging.warning(f"Package {package_name} not found or rospkg not installed, "
+                                f"searching for {urdf_mesh_file_path} in {os.getcwd()}...")
                 file_paths = []
                 for root, _, files in os.walk(os.getcwd()):
                     if urdf_mesh_file_path in files:
                         file_paths.append(os.path.join(root, urdf_mesh_file_path))
 
                 if len(file_paths) == 0:
-                    print(f"Mesh file {urdf_mesh_file_path} not found in {os.getcwd()}.")
+                    logging.warning(f"Mesh file {urdf_mesh_file_path} not found in {os.getcwd()}.")
                     return
                 elif len(file_paths) == 1:
-                    print(f"Found {file_paths[0]}")
+                    logging.info(f"Found {file_paths[0]}")
                 elif len(file_paths) > 1:
-                    print(f"Found {len(file_paths)} meshes {urdf_mesh_file_path} in {os.getcwd()}, "
-                          f"take the first one {file_paths[0]}.")
+                    logging.info(f"Found {len(file_paths)} meshes {urdf_mesh_file_path} in {os.getcwd()}, "
+                                 f"take the first one {file_paths[0]}.")
                     mesh_file_path = file_paths[0]
 
         elif urdf_mesh_file_path.find("file://") != -1:
@@ -431,7 +432,7 @@ class UrdfImporter(Factory):
             if not os.path.isabs(mesh_file_path):
                 mesh_file_path = os.path.join(os.path.dirname(self.source_file_path), mesh_file_path)
                 if not os.path.exists(mesh_file_path):
-                    print(f"Mesh file {mesh_file_path} not found.")
+                    logging.warning(f"Mesh file {mesh_file_path} not found.")
                     mesh_file_path = None
 
         return mesh_file_path

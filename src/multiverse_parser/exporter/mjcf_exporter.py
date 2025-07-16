@@ -9,6 +9,7 @@ from xml.dom import minidom
 import numpy
 from numpy import radians
 
+from multiverse_parser import logging
 from ..factory import Factory
 from ..factory import (JointBuilder, JointType,
                        GeomBuilder, GeomType,
@@ -80,7 +81,7 @@ def get_mujoco_composite_api(points_builder: PointsBuilder) -> UsdMujoco.MujocoC
     if points_prim.HasAPI(UsdMujoco.MujocoCompositeAPI):
         return UsdMujoco.MujocoCompositeAPI(points_prim)
     else:
-        print(f"Composite {points_prim.GetName()} does not have MujocoCompositeAPI.")
+        logging.warning(f"Composite {points_prim.GetName()} does not have MujocoCompositeAPI.")
         return None
 
 

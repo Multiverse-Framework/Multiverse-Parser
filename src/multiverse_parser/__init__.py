@@ -1,5 +1,33 @@
 import os
 import sys
+import logging
+
+if os.name == "nt":
+    import colorama
+    colorama.just_fix_windows_console()
+
+RESET = "\x1b[0m"
+COLORS = {
+    logging.INFO:     "\x1b[37m",  # white
+    logging.WARNING:  "\x1b[33m",  # yellow
+    logging.ERROR:    "\x1b[31m",  # red
+    logging.CRITICAL: "\x1b[31;1m" # bright/bold red
+}
+
+class ColorFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        color = COLORS.get(record.levelno, "")
+        message = super().format(record)
+        return f"{color}{message}{RESET}"
+
+def configure_logging(level=logging.INFO):
+    handler   = logging.StreamHandler(sys.stdout)
+    formatter = ColorFormatter("%(asctime)s - %(levelname)-8s - %(message)s")
+    handler.setFormatter(formatter)
+
+    root = logging.getLogger()
+    root.setLevel(level)
+    root.handlers = [handler]           # replace default handler
 
 current_dir = os.path.dirname(__file__)
 os.environ["PATH"] = os.path.abspath(os.path.join(current_dir, '..', '..', 'ext', 'blender'))

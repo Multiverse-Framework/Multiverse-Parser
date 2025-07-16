@@ -8,6 +8,7 @@ import numpy
 import mujoco
 import xml.etree.ElementTree as ET
 
+from multiverse_parser import logging
 from ..utils import modify_name
 from ..factory import Factory, Configuration, InertiaSource
 from ..factory import (WorldBuilder, BodyBuilder,
@@ -84,7 +85,7 @@ class MjcfImporter(Factory):
         except ValueError as e:
             log_file = "MUJOCO_LOG.TXT"
             if os.path.exists(log_file):
-                print(f"Removing log file {log_file}...")
+                logging.info(f"Removing log file {log_file}...")
                 os.remove(log_file)
             raise FileNotFoundError(f"{e}")
         model_name = get_model_name(xml_file_path=file_path)
@@ -496,7 +497,7 @@ class MjcfImporter(Factory):
                 tmp_mesh_file_path = os.path.join(self.tmp_mesh_dir_path,
                                                   file_ext,
                                                   f"{mesh_name}.{file_ext}")
-                print(f"Exporting mesh {mesh_name} to {tmp_mesh_file_path}...")
+                logging.info(f"Exporting mesh {mesh_name} to {tmp_mesh_file_path}...")
                 self.export_mesh(in_mesh_file_path=tmp_usd_mesh_file_path,
                                  out_mesh_file_path=tmp_mesh_file_path,
                                  execute_later=True)

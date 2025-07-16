@@ -8,6 +8,7 @@ from scipy.spatial.transform import Rotation
 
 from pxr import UsdGeom, Gf
 
+from multiverse_parser import logging
 from .mesh_exporter import export_usd
 from .mesh_importer import import_usd
 
@@ -40,7 +41,7 @@ def modify_name(in_name: str, replacement: str = None) -> str:
     out_name = in_name
     for special_char in [" ", "-", "~", ".", "/"]:
         if special_char in in_name:
-            print(f"Name {in_name} contains {special_char}, replacing with _")
+            logging.warning(f"Name {in_name} contains {special_char}, replacing with _")
             out_name = out_name.replace(special_char, "_")
 
     if out_name and out_name[0].isdigit():

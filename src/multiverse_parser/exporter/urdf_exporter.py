@@ -12,6 +12,7 @@ from trimesh.decomposition import convex_decomposition
 from scipy.spatial.transform import Rotation
 from urdf_parser_py import urdf
 
+from multiverse_parser import logging
 from ..factory import Factory
 from ..factory import (WorldBuilder,
                        BodyBuilder,
@@ -135,11 +136,13 @@ def build_geom(geom_name: str,
 
 
 def get_urdf_inertial_api(xform_prim: Usd.Prim):
-    if xform_prim.HasAPI(UsdUrdf.UrdfLinkInertialAPI):
-        urdf_link_inertial_api = UsdUrdf.UrdfLinkInertialAPI(xform_prim)
-    else:
+    if xform_prim.HasAPI(UsdPhysics.MassAPI):
         physics_mass_api = UsdPhysics.MassAPI(xform_prim)
         urdf_link_inertial_api = build_urdf_inertial_api(physics_mass_api=physics_mass_api)
+    elif xform_prim.HasAPI(UsdUrdf.UrdfLinkInertialAPI):
+        urdf_link_inertial_api = UsdUrdf.UrdfLinkInertialAPI(xform_prim)
+    else:
+        raise ValueError(f"Prim {xform_prim.GetName()} does not have a valid inertial API.")
     return urdf_link_inertial_api
 
 
@@ -241,8 +244,8 @@ class UrdfExporter:
                 try:
                     self._ros_package_path = rospack.get_path(relative_to_ros_package)
                 except rospkg.ResourceNotFound:
-                    print(f"Could not find ROS package {relative_to_ros_package}, "
-                          f"searching for package.xml in parent directories of {file_path}.")
+                    logging.warning(f"Could not find ROS package {relative_to_ros_package}, "
+                                    f"searching for package.xml in parent directories of {file_path}.")
                     self._ros_package_path = file_path
                     mesh_dir_relpath = meshdir_name
                     while self._ros_package_path != "/":
@@ -250,7 +253,7 @@ class UrdfExporter:
                         mesh_dir_relpath = os.path.join(os.path.basename(self._ros_package_path), str(mesh_dir_relpath))
 
                         if os.path.exists(os.path.join(self._ros_package_path, "package.xml")):
-                            print(f"Found package.xml in {self._ros_package_path}.")
+                            logging.info(f"Found package.xml in {self._ros_package_path}.")
                             break
                     else:
                         raise FileNotFoundError(
@@ -270,8 +273,7 @@ class UrdfExporter:
         for joint_builder in body_builder.joint_builders:
             urdf_joint_api = get_urdf_joint_api(joint_builder=joint_builder)
 
-            joint_type = urdf_joint_api.GetTypeAttr().Get()
-            if joint_type == "fixed" or not self.factory.config.with_physics:
+            if joint_builder.type == JointType.FIXED or not self.factory.config.with_physics:
                 urdf_joint = self._build_fixed_joint(body_builder=body_builder, urdf_joint_api=urdf_joint_api)
             else:
                 urdf_joint = self._build_movable_joint(urdf_joint_api=urdf_joint_api)

@@ -7,6 +7,7 @@ from typing import Optional, Dict, List
 
 import numpy
 
+from multiverse_parser import logging
 from .geom_builder import GeomBuilder, GeomProperty, GeomInertial
 from .points_builder import PointsBuilder, PointProperty
 from .joint_builder import JointBuilder, JointProperty
@@ -95,7 +96,7 @@ class BodyBuilder:
 
     def add_geom(self, geom_name: str, geom_property: GeomProperty) -> GeomBuilder:
         if geom_name in self._geom_builders:
-            print(f"Geom {geom_name} already exists.")
+            logging.warning(f"Geom {geom_name} already exists.")
             geom_builder = self._geom_builders[geom_name]
         else:
             geom_builder = GeomBuilder(
@@ -191,7 +192,7 @@ class BodyBuilder:
     def add_child_body_builder(self, child_body_builder: BodyBuilder) -> None:
         child_body_name = child_body_builder.xform.GetPrim().GetName()
         if child_body_name in self._child_body_builders:
-            print(f"Child body {child_body_name} already exists.")
+            logging.warning(f"Child body {child_body_name} already exists.")
         else:
             self._child_body_builders[child_body_name] = child_body_builder
 

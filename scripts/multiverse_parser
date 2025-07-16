@@ -10,6 +10,7 @@ current_dir = os.path.dirname(__file__)
 src_dir = os.path.abspath(os.path.join(current_dir, '..', 'src'))
 sys.path.insert(0, src_dir)
 
+from multiverse_parser import configure_logging, logging
 from multiverse_parser import InertiaSource
 from multiverse_parser import UrdfImporter, MjcfImporter, UsdImporter
 from multiverse_parser import UrdfExporter, MjcfExporter
@@ -27,6 +28,11 @@ def main():
         type=str,
         required=True,
         help="Export scene description as (URDF, MJCF, WORLD or USD)",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Verbose flag",
     )
     parser.add_argument(
         "--fixed_base",
@@ -97,6 +103,9 @@ def main():
 
     args = parser.parse_args()
 
+    level = logging.DEBUG if args.verbose else logging.INFO
+    configure_logging(level=level)
+
     fixed_base = args.fixed_base
     root_name = args.root_name
     with_physics = args.physics
@@ -123,8 +132,8 @@ def main():
     output_path = args.output
     if not os.path.isabs(output_path):
         output_path = os.path.join(os.getcwd(), output_path)
-    print(f"Input path: {input_path}")
-    print(f"Output path: {output_path}")
+    logging.info(f"Input path: {input_path}")
+    logging.info(f"Output path: {output_path}")
 
     if in_extension in [".usd", ".usda", ".usdc"]:
         factory = UsdImporter(file_path=input_path,
