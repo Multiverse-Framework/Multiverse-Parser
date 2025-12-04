@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-
+import glob
 import os
 import shutil
 from typing import Tuple, Optional, Union
 
 import numpy
+import trimesh
+from trimesh.decomposition import convex_decomposition
 from scipy.spatial.transform import Rotation
 from urdf_parser_py import urdf
 
@@ -18,7 +20,7 @@ from ..importer.urdf_importer import build_urdf_inertial_api
 from ..utils import xform_cache
 
 from pxr import UsdUrdf, Gf, UsdPhysics, UsdGeom, Usd, UsdShade
-
+import lxml.etree as ET
 
 def get_robot_name(world_builder: WorldBuilder) -> str:
     usd_urdf = UsdUrdf.Urdf.Get(world_builder.stage, "/urdf")
@@ -577,6 +579,141 @@ class UrdfExporter:
         else:
             self.factory.save_tmp_model(usd_file_path=self.file_path.replace(".urdf", ".usda"),
                                         excludes=["usd", ".usda"])
+
+
+    def export_with_convex_collisions(self, keep_usd: bool = True):
+        """
+        Export the URDF with convex decomposed collision meshes.
+
+        :param keep_usd: If True, keeps the original USD file after decomposition.
+        """
+        # 1. Export the original URDF
+        self.export(keep_usd=keep_usd)
+        original_urdf_path = self.file_path
+        decomposed_urdf_path = original_urdf_path.replace(".urdf", "_decomposed.urdf")
+
+        # 2. Parse original URDF
+        parser = ET.XMLParser(remove_blank_text=True)
+        tree = ET.parse(original_urdf_path, parser)
+        root = tree.getroot()
+
+        # 3. Find all collision mesh references and decompose
+        for mesh in root.findall(".//collision/geometry/mesh"):
+            mesh_path = mesh.attrib.get("filename")
+            if not mesh_path or not mesh_path.endswith(".stl"):
+                continue  # skip non-STL
+
+            if mesh_path.startswith("package://"):
+                print(f"[SKIP] Cannot resolve package URI: {mesh_path}")
+                continue
+
+            # Remove "file://" prefix if present
+            mesh_path_clean = mesh_path.replace("file://", "")
+            full_input_path = os.path.abspath(os.path.join(os.path.dirname(self.file_path), mesh_path_clean))
+            # Build path to stl file
+            mesh_root = os.path.dirname(os.path.dirname(full_input_path))
+            obj_dir = os.path.join(mesh_root, "obj")
+            os.makedirs(obj_dir, exist_ok=True)
+
+            # Prepare input and output paths
+            vhacd_input_basename = os.path.basename(full_input_path).replace(".stl", "_convex.obj")
+            tmp_obj_path = os.path.join("/tmp", vhacd_input_basename)
+            vhacd_output_basename = vhacd_input_basename.replace("_convex.obj", "_convex")
+            vhacd_output_dir = os.path.join(obj_dir, vhacd_output_basename)
+
+            # Run VHACD if not already done
+            if not os.path.exists(vhacd_output_dir):
+                # convert stl to obj
+                mesh = trimesh.load(full_input_path)
+                mesh.export(tmp_obj_path)
+
+                self._run_vhacd_trimesh(tmp_obj_path, obj_dir)
+            else:
+                print(f"[SKIP] Already decomposed: {vhacd_output_dir}")
+
+            # Add multiple <collision> tags for each decomposed mesh
+            decomposed_parts = sorted(glob.glob(os.path.join(vhacd_output_dir, "*.obj")))
+            if not decomposed_parts:
+                raise FileNotFoundError(f"No decomposed mesh parts found in {vhacd_output_dir}")
+
+            collision_elem = mesh.getparent().getparent()  # mesh → geometry → collision
+            link_elem = collision_elem.getparent()
+            link_elem.remove(collision_elem)
+
+            # Add new <collision> tags to the <link>
+            for part_path in decomposed_parts:
+                part_relpath = os.path.relpath(part_path, os.path.dirname(original_urdf_path))
+
+                collision = ET.Element("collision")
+                geometry = ET.SubElement(collision, "geometry")
+                mesh_elem = ET.SubElement(geometry, "mesh")
+                mesh_elem.attrib["filename"] = part_relpath
+
+                link_elem.append(collision)
+
+        # 4. Save the decomposed URDF
+        tree.write(decomposed_urdf_path, pretty_print=True, xml_declaration=True, encoding="UTF-8")
+        print(f"[✔] Decomposed URDF saved: {decomposed_urdf_path}")
+
+    def _run_vhacd_trimesh(self, input_stl: str, obj_dir: str, max_convex_hulls: int = 16):
+        """
+        Run VHACD convex decomposition on the input STL file and save the results as OBJ files.
+
+        :param input_stl: Path to the input STL file.
+        :param obj_dir: Directory to save the decomposed OBJ files.
+        :param max_convex_hulls: Maximum number of convex hulls to generate.
+        """
+        print(f"[VHACD] Running convex decomposition on {input_stl} (max hulls: {max_convex_hulls})")
+
+        mesh = trimesh.load_mesh(input_stl)
+
+        if not isinstance(mesh, trimesh.Trimesh):
+            raise ValueError(f"Expected Trimesh, got {type(mesh)}")
+
+        # Skip if mesh is already convex
+        if mesh.is_convex:
+            print("[INFO] Mesh is already convex, skipping decomposition.")
+            base_name = os.path.basename(input_stl).replace(".obj", "")
+            output_base_path = os.path.join(obj_dir, base_name)
+            os.makedirs(output_base_path, exist_ok=True)
+
+            part_filename = f"{base_name}_convex.obj"
+            part_path = os.path.join(output_base_path, part_filename)
+            mesh.export(part_path)
+            print(f"[✔] Exported original convex mesh: {part_path}")
+            return
+
+        # Otherwise, run convex decomposition
+        mesh_args_list = convex_decomposition(
+            mesh,
+            maxConvexHulls=max_convex_hulls,
+            resolution=10_000,
+            minimumVolumePercentErrorAllowed=1.0,
+            maxRecursionDepth=10,
+            shrinkWrap=True,
+            fillMode="flood",
+            maxNumVerticesPerCH=64,
+            asyncACD=True,
+            minEdgeLength=2,
+            findBestPlane=False
+        )
+
+        if not mesh_args_list:
+            raise RuntimeError("VHACD decomposition returned no convex parts")
+
+        base_name = os.path.basename(input_stl).replace(".obj", "")
+        output_base_path = os.path.join(obj_dir, base_name)
+        os.makedirs(output_base_path, exist_ok=True)
+
+        for i, mesh_args in enumerate(mesh_args_list):
+            part = trimesh.Trimesh(**mesh_args)
+            part_filename = f"{base_name}_{i}.obj"
+            part_path = os.path.join(output_base_path, part_filename)
+            part.export(part_path)
+            print(f"[✔] Exported convex part {i}: {part_path}")
+
+        print(f"[✔] VHACD complete: {len(mesh_args_list)} parts saved to {output_base_path}")
+
 
     @property
     def file_path(self) -> str:
